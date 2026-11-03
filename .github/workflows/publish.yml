@@ -1,0 +1,48 @@
+name: Publish maps
+
+# Builds every region of regions.json and the light world map, then publishes them with
+# catalogue.json as a GitHub release. The OSTIE app reads the latest catalogue (D-23).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 2 * *" # the 2nd of each month, 03:17 UTC
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pmtiles
+        run: |
+          curl -sSfL https://github.com/protomaps/go-pmtiles/releases/download/v1.31.0/go-pmtiles_1.31.0_Linux_x86_64.tar.gz \
+            | tar xz -C /usr/local/bin pmtiles
+
+      - name: Build the maps
+        run: |
+          TAG="maps-$(date -u +%Y%m%d-%H%M)"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          ./build.sh out "https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG"
+
+      - name: Sizes
+        run: |
+          echo "## Maps (Protomaps build $(cat out/BUILD))" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Map | Size (MB) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '(.regions + [.world])[] | "| \(.name) | \(.bytes / 1000000 | floor) |"' out/catalogue.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" out/*.pmtiles out/catalogue.json --latest \
+            --title "Maps $(cat out/BUILD)" \
+            --notes "OpenStreetMap data, Protomaps build $(cat out/BUILD). © OpenStreetMap contributors, ODbL."
+          # Keep the two most recent map releases: older files are not needed and weigh gigabytes.
+          gh release list --limit 100 --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[2:] | .[].tagName' \
+            | xargs -r -n1 gh release delete --yes --cleanup-tag

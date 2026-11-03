@@ -1,0 +1,28 @@
+{
+  "regions": [
+    {
+      "id": "luxembourg",
+      "name": "Luxembourg",
+      "maxzoom": 15,
+      "polygon": [[5.60, 49.38], [6.60, 49.38], [6.60, 50.25], [5.60, 50.25], [5.60, 49.38]]
+    },
+    {
+      "id": "metz-luxembourg",
+      "name": "Metz – Luxembourg",
+      "maxzoom": 15,
+      "polygon": [[5.85, 49.00], [6.55, 49.00], [6.55, 49.70], [5.85, 49.70], [5.85, 49.00]]
+    },
+    {
+      "id": "provence",
+      "name": "Provence (Gap – Arles – Marseille – Toulon)",
+      "maxzoom": 15,
+      "polygon": [[6.25, 44.70], [4.50, 43.75], [4.80, 43.28], [5.30, 43.15], [6.05, 43.00], [6.35, 43.15], [6.25, 44.70]]
+    },
+    {
+      "id": "normandie",
+      "name": "Normandie (Cotentin included)",
+      "maxzoom": 15,
+      "polygon": [[-1.97, 48.15], [1.85, 48.15], [1.85, 50.10], [-1.97, 50.10], [-1.97, 48.15]]
+    }
+  ]
+}
