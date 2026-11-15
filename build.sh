@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # Builds every map of regions.json, the light world map and catalogue.json into OUTPUT_DIR.
 #
-# Requires `pmtiles` (https://github.com/protomaps/go-pmtiles/releases), `jq` and `curl`.
-# Data: OpenStreetMap via the Protomaps daily build, © OpenStreetMap contributors, ODbL.
+# With each region map comes its names file (places, streets, house numbers) for the offline search.
+#
+# Requires `pmtiles` (https://github.com/protomaps/go-pmtiles/releases), `jq`, `curl`,
+# and for the names `python3` with `pip install osmium`.
+# Data: OpenStreetMap via the Protomaps daily build and the Geofabrik extracts,
+# © OpenStreetMap contributors, ODbL.
 #
 # Usage: build.sh OUTPUT_DIR BASE_URL [YYYYMMDD]
 #   BASE_URL = where the files will be downloadable, e.g. https://github.com/OWNER/REPO/releases/download/TAG
@@ -48,8 +52,26 @@ for i in $(seq 0 $((count - 1))); do
   bbox=$(jq -c '[(.polygon | map(.[0]) | min), (.polygon | map(.[1]) | min), (.polygon | map(.[0]) | max), (.polygon | map(.[1]) | max)]' <<< "$region")
   pmtiles extract "$SOURCE" "$OUT/$id.pmtiles" --region="$OUT/$id.geojson" --maxzoom="$maxzoom"
   rm "$OUT/$id.geojson"
-  entry "$id" "$name" "$id.pmtiles" "$maxzoom" "$bbox" >> "$OUT/regions.jsonl"
+
+  # Names of the region, from the OpenStreetMap extracts listed in "osm" (shared between regions).
+  names='null'
+  if [ "$(jq '.osm // [] | length' <<< "$region")" -gt 0 ]; then
+    mkdir -p "$OUT/pbf"
+    pbf=()
+    for extract in $(jq -r '.osm[]' <<< "$region"); do
+      file="$OUT/pbf/$(basename "$extract").osm.pbf"
+      [ -f "$file" ] || curl -sSfL -o "$file" "https://download.geofabrik.de/${extract}-latest.osm.pbf"
+      pbf+=("$file")
+    done
+    python3 "$(dirname "$0")/names.py" "$id" "$OUT/$id.names" "$(date -u +%Y%m%d)" "${pbf[@]}"
+    names=$(jq -n --arg file "$id.names" --arg url "$BASE_URL/$id.names" \
+      --argjson bytes "$(stat -c %s "$OUT/$id.names")" --arg sha256 "$(sha256sum "$OUT/$id.names" | cut -d' ' -f1)" \
+      '{file: $file, url: $url, bytes: $bytes, sha256: $sha256}')
+  fi
+  entry "$id" "$name" "$id.pmtiles" "$maxzoom" "$bbox" \
+    | jq --argjson names "$names" 'if $names then . + {names: $names} else . end' >> "$OUT/regions.jsonl"
 done
+rm -rf "$OUT/pbf"
 
 pmtiles extract "$SOURCE" "$OUT/world.pmtiles" --bbox=-180,-85,180,85 --maxzoom="$WORLD_MAXZOOM"
 world=$(entry world World world.pmtiles "$WORLD_MAXZOOM" '[-180,-85,180,85]')
