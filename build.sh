@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Builds every map of regions.json, the light world map and catalogue.json into OUTPUT_DIR.
 #
-# With each region map comes its names file (places, streets, house numbers) for the offline search.
+# With each region map come its names file (places, streets, house numbers) for the offline search
+# and its relief file (elevation) for the hillshade and the terrain tools.
 #
 # Requires `pmtiles` (https://github.com/protomaps/go-pmtiles/releases), `jq`, `curl`,
-# and for the names `python3` with `pip install osmium`.
+# and `python3` with `pip install osmium pmtiles pillow numpy`.
 # Data: OpenStreetMap via the Protomaps daily build and the Geofabrik extracts,
-# © OpenStreetMap contributors, ODbL.
+# © OpenStreetMap contributors, ODbL; elevation from Terrain Tiles on AWS Open Data.
 #
 # Usage: build.sh OUTPUT_DIR BASE_URL [YYYYMMDD]
 #   BASE_URL = where the files will be downloadable, e.g. https://github.com/OWNER/REPO/releases/download/TAG
@@ -68,8 +69,16 @@ for i in $(seq 0 $((count - 1))); do
       --argjson bytes "$(stat -c %s "$OUT/$id.names")" --arg sha256 "$(sha256sum "$OUT/$id.names" | cut -d' ' -f1)" \
       '{file: $file, url: $url, bytes: $bytes, sha256: $sha256}')
   fi
+
+  # Relief of the region: elevation tiles, about 25 m per pixel.
+  python3 "$(dirname "$0")/relief.py" "$id" "$OUT/$id.relief.pmtiles"
+  relief=$(jq -n --arg file "$id.relief.pmtiles" --arg url "$BASE_URL/$id.relief.pmtiles" \
+    --argjson bytes "$(stat -c %s "$OUT/$id.relief.pmtiles")" \
+    --arg sha256 "$(sha256sum "$OUT/$id.relief.pmtiles" | cut -d' ' -f1)" \
+    '{file: $file, url: $url, bytes: $bytes, sha256: $sha256}')
   entry "$id" "$name" "$id.pmtiles" "$maxzoom" "$bbox" \
-    | jq --argjson names "$names" 'if $names then . + {names: $names} else . end' >> "$OUT/regions.jsonl"
+    | jq --argjson names "$names" --argjson relief "$relief" \
+      '(if $names then . + {names: $names} else . end) + {relief: $relief}' >> "$OUT/regions.jsonl"
 done
 rm -rf "$OUT/pbf"
 
